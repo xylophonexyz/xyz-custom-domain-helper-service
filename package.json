@@ -1,0 +1,8 @@
+{
+ "name": "xyz-custom-domain-zone-helper",
+ "version": "0.0.1",
+ "dependencies": {
+  "redis": "^2.8.0",
+  "request": "^2.81.0"
+ }
+}
