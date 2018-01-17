@@ -54,6 +54,30 @@ exports.handleInsertKeyPairRequest = function handleInsertKeyPairRequest(req, re
     res.setHeader('Content-Type', 'application/json');
     validateSiteAuthorWithGet(siteId, authHeader).then(() => {
       insertKeyPair(siteId, domainName).then(() => {
+        res.send({
+          success: true,
+          message: `Please add a CNAME record that points ${domainName} to proxy.xylophonexyz.com`
+        }).end();
+      }).catch(err => {
+        res.status(400).send(readError(err)).end();
+      });
+    }).catch(err => {
+      res.status(401).send(readError(err)).end();
+    });
+  } catch (e) {
+    const error = new Error(paramsMissingError('{domainName, siteId}'));
+    res.status(400).send({error: readError(error)}).end();
+  }
+};
+
+exports.handleDeleteKeyPairRequest = function handleDeleteKeyPairRequest(req, res) {
+  try {
+    const siteId = req.body.siteId;
+    const domainName = req.body.domainName;
+    const authHeader = getAuthHeader(req);
+    res.setHeader('Content-Type', 'application/json');
+    validateSiteAuthorWithGet(siteId, authHeader).then(() => {
+      removeKey(domainName).then(() => {
         res.send({success: true}).end();
       }).catch(err => {
         res.status(400).send(readError(err)).end();
@@ -116,7 +140,8 @@ function createFullZone(params) {
       const promises = [
         addRootDnsRecord(createZoneResult.result),
         enableAlwaysUseHttps(createZoneResult.result),
-        insertKeyPair(params.siteId, params.domainName)
+        insertKeyPair(params.siteId, params.domainName),
+        insertKeyPair(params.siteId, `www.${params.domainName}`),
       ];
       Promise.all(promises).then(results => {
         const response = {createZoneResult: createZoneResult};
@@ -195,7 +220,9 @@ function deleteZone(params, site) {
             reject(err);
           } else {
             removeKey(domainName).then(() => {
-              resolve(res);
+              removeKey(`www.${domainName}`).then(() => {
+                resolve(res);
+              });
             }).catch(err => {
               console.log('Failed to remove key from redis', err);
               resolve(res);
@@ -223,10 +250,8 @@ function insertKeyPair(siteId, domainName) {
       reject(err.message);
     });
     client.hset(domainName, 'siteId', siteId, () => {
-      client.hset(`www.${domainName}`, 'siteId', siteId, () => {
-        client.quit();
-        resolve(true);
-      });
+      client.quit();
+      resolve(true);
     });
   });
 }
@@ -243,10 +268,8 @@ function removeKey(domainName) {
       reject(err.message);
     });
     client.del(domainName, () => {
-      client.del(`www.${domainName}`, () => {
-        client.quit();
-        resolve(true);
-      });
+      client.quit();
+      resolve(true);
     });
   });
 }
