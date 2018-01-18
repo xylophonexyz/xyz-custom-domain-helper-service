@@ -16,8 +16,8 @@ exports.handleCreateFullZoneRequest = function handleCreateFullZoneRequest(req, 
     const siteId = req.body.siteId;
     const domainName = req.body.domainName;
     const authHeader = getAuthHeader(req);
-    validateSiteAuthorWithGet(siteId, authHeader).then(() => {
-      createFullZone({siteId: siteId, domainName: domainName, authHeader: authHeader}).then(zoneData => {
+    validateSiteAuthorWithGet(siteId, authHeader).then(site => {
+      createFullZone({siteId: siteId, domainName: domainName, authHeader: authHeader, site: site}).then(zoneData => {
         res.send(zoneData).end();
       }).catch(err => {
         res.status(400).send(readError(err)).end();
@@ -52,18 +52,17 @@ exports.handleInsertKeyPairRequest = function handleInsertKeyPairRequest(req, re
     const domainName = req.body.domainName;
     const authHeader = getAuthHeader(req);
     res.setHeader('Content-Type', 'application/json');
-    validateSiteAuthorWithGet(siteId, authHeader).then(() => {
-      insertKeyPair(siteId, domainName).then(() => {
-        res.send({
-          success: true,
-          message: `Please add a CNAME record that points ${domainName} to proxy.xylophonexyz.com`
-        }).end();
-      }).catch(err => {
-        res.status(400).send(readError(err)).end();
-      });
-    }).catch(err => {
-      res.status(401).send(readError(err)).end();
-    });
+    validateSiteAuthorWithGet(siteId, authHeader).then(site => {
+      const landingPageId = getLandingPageId(site);
+      insertKeyPair(domainName, 'siteId', siteId).then(() => {
+        insertKeyPair(domainName, 'landingPageId', landingPageId).then(() => {
+          res.send({
+            success: true,
+            message: `Please add a CNAME record that points ${domainName} to proxy.xylophonexyz.com`
+          }).end();
+        }).catch(err => res.status(400).send(readError(err)).end());
+      }).catch(err => res.status(400).send(readError(err)).end());
+    }).catch(err => res.status(401).send(readError(err)).end());
   } catch (e) {
     const error = new Error(paramsMissingError('{domainName, siteId}'));
     res.status(400).send({error: readError(error)}).end();
@@ -137,11 +136,14 @@ function createFullZone(params) {
   return new Promise((resolve, reject) => {
     createZone(params.domainName).then(createZoneResult => {
       const mappings = ['addRootDnsResult', 'enableAlwaysUseHttpsResult', 'insertKeyPairResult'];
+      const landingPageId = getLandingPageId(params.site);
       const promises = [
         addRootDnsRecord(createZoneResult.result),
         enableAlwaysUseHttps(createZoneResult.result),
-        insertKeyPair(params.siteId, params.domainName),
-        insertKeyPair(params.siteId, `www.${params.domainName}`),
+        insertKeyPair(params.domainName, 'siteId', params.siteId),
+        insertKeyPair(`www.${params.domainName}`, 'siteId', params.siteId),
+        insertKeyPair(params.domainName, 'landingPageId', landingPageId),
+        insertKeyPair(`www.${params.domainName}`, 'landingPageId', landingPageId),
       ];
       Promise.all(promises).then(results => {
         const response = {createZoneResult: createZoneResult};
@@ -238,7 +240,7 @@ function deleteZone(params, site) {
   });
 }
 
-function insertKeyPair(siteId, domainName) {
+function insertKeyPair(domainName, key, value) {
   return new Promise((resolve, reject) => {
     const client = redis.createClient({
       host: getConfig('REDIS_HOST'),
@@ -249,7 +251,7 @@ function insertKeyPair(siteId, domainName) {
       client.quit();
       reject(err.message);
     });
-    client.hset(domainName, 'siteId', siteId, () => {
+    client.hset(domainName, key, value, () => {
       client.quit();
       resolve(true);
     });
@@ -353,6 +355,20 @@ function readError(err) {
   return err.message ? err.message : err;
 }
 
-function handleCreateFullZoneError(error, callback) {
-
+function getLandingPageId(site) {
+  const pages = site.pages.filter(page => page.metadata && page.metadata.navigationItem);
+  const page = pages.sort((a, b) => {
+    if (a.metadata.index > b.metadata.index) {
+      return 1;
+    } else if (a.metadata.index < b.metadata.index) {
+      return -1;
+    } else {
+      return 0;
+    }
+  }).pop();
+  if (page) {
+    return page.id;
+  } else {
+    return null;
+  }
 }
