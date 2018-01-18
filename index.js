@@ -358,9 +358,9 @@ function readError(err) {
 function getLandingPageId(site) {
   const pages = site.pages.filter(page => page.metadata && page.metadata.navigationItem);
   const page = pages.sort((a, b) => {
-    if (a.metadata.index > b.metadata.index) {
+    if (a.metadata.index < b.metadata.index) {
       return 1;
-    } else if (a.metadata.index < b.metadata.index) {
+    } else if (a.metadata.index > b.metadata.index) {
       return -1;
     } else {
       return 0;
