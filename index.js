@@ -69,6 +69,25 @@ exports.handleInsertKeyPairRequest = function handleInsertKeyPairRequest(req, re
   }
 };
 
+exports.handleClearLandingPageIdRequest = function handleClearLandingPageIdRequest(req, res) {
+  try {
+    const siteId = req.body.siteId;
+    const domainName = req.body.domainName;
+    const authHeader = getAuthHeader(req);
+    res.setHeader('Content-Type', 'application/json');
+    validateSiteAuthorWithGet(siteId, authHeader).then(site => {
+      removeField(domainName, 'landingPageId').then(() => {
+        res.send({success: true}).end();
+      }).catch(err => {
+        res.status(400).send(readError(err)).end();
+      });
+    }).catch(err => res.status(401).send(readError(err)).end());
+  } catch (e) {
+    const error = new Error(paramsMissingError('{domainName, siteId}'));
+    res.status(400).send({error: readError(error)}).end();
+  }
+};
+
 exports.handleDeleteKeyPairRequest = function handleDeleteKeyPairRequest(req, res) {
   try {
     const siteId = req.body.siteId;
@@ -258,7 +277,7 @@ function insertKeyPair(domainName, key, value) {
   });
 }
 
-function removeKey(domainName) {
+function removeKey(key) {
   return new Promise((resolve, reject) => {
     const client = redis.createClient({
       host: getConfig('REDIS_HOST'),
@@ -269,7 +288,25 @@ function removeKey(domainName) {
       client.quit();
       reject(err.message);
     });
-    client.del(domainName, () => {
+    client.del(key, () => {
+      client.quit();
+      resolve(true);
+    });
+  });
+}
+
+function removeField(key, field) {
+  return new Promise((resolve, reject) => {
+    const client = redis.createClient({
+      host: getConfig('REDIS_HOST'),
+      port: getConfig('REDIS_PORT'),
+      db: getConfig('REDIS_DB')
+    });
+    client.on('error', err => {
+      client.quit();
+      reject(err.message);
+    });
+    client.hdel(key, field, () => {
       client.quit();
       resolve(true);
     });
