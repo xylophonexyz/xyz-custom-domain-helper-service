@@ -75,7 +75,8 @@ exports.handleClearLandingPageIdRequest = function handleClearLandingPageIdReque
     const domainName = req.body.domainName;
     const authHeader = getAuthHeader(req);
     res.setHeader('Content-Type', 'application/json');
-    validateSiteAuthorWithGet(siteId, authHeader).then(site => {
+    validateSiteAuthorWithGet(siteId, authHeader).then(() => {
+      console.log(`Clearing landingPageId for ${domainName}, Site Id: ${siteId}`);
       removeField(domainName, 'landingPageId').then(() => {
         res.send({success: true}).end();
       }).catch(err => {
